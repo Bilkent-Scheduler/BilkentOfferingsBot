@@ -17,12 +17,10 @@ ADDEDCOURSE = 2
 WAITINGDELETEDCOURSE = 3
 
 
-# Loading json
 f = open("data.json")
 data = json.loads(f.read())
 f.close()
 
-# Database connection
 db = mysql.connector.connect(
   host="localhost",
   user="root",
@@ -38,7 +36,6 @@ dept_list = []
 for i in data["depts"]:
     dept_list.append(i["code"])
 
-# Start conversation, force user to start a new schedule
 def start(update, context):
     context.bot.send_message(chat_id=update.message.chat_id, text = "Welcome to Bilkent Offerings Bot.")
     context.bot.send_message(chat_id=update.message.chat_id, text = "You can plan your schedule here.")
@@ -53,7 +50,6 @@ def start(update, context):
     ik = ReplyKeyboardMarkup.from_button(KeyboardButton(text = "/newschedule"))
     context.bot.send_message(chat_id=update.message.chat_id, text = "Select an option.", reply_markup = ik)
 
-# Delete previous schedule data. 
 def newschedule(update, context):
     # Database sil
     cursor.execute("DELETE FROM Schedules WHERE chatID = " + str(update.message.chat_id))
@@ -78,7 +74,7 @@ def addcoursecode(update, context):
     for i in data["depts"]:
         if i["code"] == update.message.text:
             for j in i["courses"]:
-                buttons.append([update.message.text + " " + str(j["no"])])
+                buttons.append([update.message.text + " " + str(j["no"])+ " " + j["name"]])
     ik = ReplyKeyboardMarkup(buttons)
     context.bot.send_message(chat_id=update.message.chat_id, text = "Select a course.", reply_markup = ik)
     return WAITINGCOURSENO
@@ -98,7 +94,7 @@ def addcourseno(update, context):
 
     menuu(update, context)
     return ConversationHandler.END
-   
+    
 def menuu(update, context):
     
     cursor.execute("SELECT * FROM Schedules WHERE chatID = " + str(update.message.chat_id))
@@ -114,7 +110,13 @@ def menuu(update, context):
         courses_message = "Your current courses are: \n"
         
         for i in courses:
-            courses_message += i[1] + " " + str(i[2]) + "\n"
+            courses_message += i[1] + " " + str(i[2]) + " "
+            for a in data["depts"]:
+                if a["code"] == i[1]:
+                    for b in a["courses"]:
+                        if b["no"] == i[2]:
+                            courses_message += b["name"]
+            courses_message += "\n"
             
         context.bot.send_message(chat_id=update.message.chat_id, text = courses_message )
         
@@ -128,7 +130,13 @@ def delcourse(update, context):
     
     buttons = [["/cancel"]]
     for i in courses: 
-        buttons.append([i[1] + " " + str(i[2])])
+        button_str = i[1] + " " + str(i[2]) + " "
+        for a in data["depts"]:
+            if a["code"] == i[1]:
+                for b in a["courses"]:
+                    if b["no"] == i[2]:
+                        button_str += b["name"]
+        buttons.append([button_str])
     
     ik = ReplyKeyboardMarkup(buttons)
     context.bot.send_message(chat_id=update.message.chat_id, text = "Select a course to delete", reply_markup = ik)
@@ -142,14 +150,11 @@ def delcoursedone(update, context):
     menuu(update,context)
     return ConversationHandler.END
 
-# This function checks whether a lecture starting at s1s and ending at s1e conflicting with a lecture
-# starting at s2s and ending at s2e.
 def check_conflict_from_time(s1s, s1e, s2s, s2e):
     if s1s > s2e or s2s > s1e:
         return False
     return True
-
-# Checking the conflicts for two section objects.
+    
 def check_conflict(s1, s2):
         for i in s1["hours"]:
             for j in s2["hours"]:
@@ -158,8 +163,7 @@ def check_conflict(s1, s2):
                 if check_conflict_from_time(i["start_time"], i["end_time"], j["start_time"], j["end_time"]):
                     return True
         return False
-
-# Recursive function to find all possible combinations.
+    
 def find_possibilities(sections):
     if len(sections) == 1:
         results = []
@@ -184,7 +188,6 @@ def find_possibilities(sections):
                 results.append(checking)
     return results
 
-# Generation of the output html report.
 def generate_html(courses, possibilities, last_pull):       
            
     top_str = "<!DOCTYPE html><html><head><title>"
@@ -223,8 +226,13 @@ def generate_html(courses, possibilities, last_pull):
         cno = 0
         for i in courses:
             table_str += "<li>"
-            
-            table_str += "%s%s-%s|%s" % (i[0], i[1], possibility[cno]["no"], possibility[cno]["instructor"])
+            course_name = ""
+            for a in data["depts"]:
+                if a["code"] == i[0]:
+                    for b in a["courses"]:
+                        if b["no"] == i[1]:
+                            course_name += b["name"]
+            table_str += "%s%s-%s %s|%s" % (i[0], i[1], possibility[cno]["no"], course_name, possibility[cno]["instructor"])
             table_str += "</li>"
             cno += 1
         table_str += "</ol>"
@@ -257,8 +265,7 @@ def generate_html(courses, possibilities, last_pull):
         option_no += 1
     top_str += "</body></html>"
     return top_str
-
-# execution command given by user
+    
 def execute(update, context):
     cursor.execute("SELECT courseCode, courseNo from Schedules where chatID = " + str(update.message.chat_id))
     user_courses = cursor.fetchall()
@@ -295,8 +302,6 @@ def execute(update, context):
 def cancel(update, context):
     context.bot.send_message(chat_id=update.message.chat_id, text = "Cancelled. Going back to main menu.")
     menuu(update, context)
-
-# API specific stuff
 
 updater = Updater(key)
 dp = updater.dispatcher
